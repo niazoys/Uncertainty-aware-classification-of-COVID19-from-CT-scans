@@ -66,7 +66,7 @@ class H5Dataset(Dataset):
         self.file_path = path
         self.train = train
         self.data = np.array(h5py.File(self.file_path, 'r')["ct_slices"]).astype(np.uint8)
-        self.label = np.array(h5py.File(self.file_path, 'r')["slice_class"]).astype(np.int)
+        self.label = np.array(h5py.File(self.file_path, 'r')["slice_class"]).astype(np.int64)
         with h5py.File(self.file_path, 'r') as file:
             self.dataset_len = len(file['slice_class'])
 

@@ -17,28 +17,11 @@ from adf_blocks import SoftmaxHeteroscedasticLoss
 
 def train(net,output,device,epochs,batch,lr,input_shape,min_variance):
  
-    # train_dataset=torchvision.datasets.ImageFolder('ChestXRay2017/chest_xray/train',transform= transforms.Compose([
-    #                               transforms.Resize(size=(input_shape,input_shape)),
-    #                               transforms.ColorJitter(brightness=0.25,contrast=0.25),
-    #                               transforms.RandomResizedCrop(size=(input_shape,input_shape)),
-    #                               transforms.RandomHorizontalFlip(), 
-    #                               transforms.RandomVerticalFlip(),
-    #                               transforms.RandomRotation(20), 
-    #                               transforms.ToTensor(),
-    #                               transforms.Normalize(mean=[0.425],std=[0.225])]))
-
-    # val_dataset=torchvision.datasets.ImageFolder("ChestXRay2017/chest_xray/test",transform=transforms.Compose([ 
-    #                                                 transforms.Resize(size=(input_shape,input_shape)),
-    #                                                 transforms.ToTensor(),
-    #                                                 transforms.Normalize(mean=[0.425],std=[0.225])]))
-
-    train_dataset=H5Dataset(path='train_data.h5',train=True,shape=input_shape)
+    train_dataset=H5Dataset(path='pulmonary/train_data.h5',train=True,shape=input_shape)
     
-    val_dataset=H5Dataset(path='val_data.h5',train=False,shape=input_shape)
+    val_dataset=H5Dataset(path='pulmonary/val_data.h5',train=False,shape=input_shape)
 
     n_train, n_val = len(train_dataset), len(val_dataset)
-
-   
 
     train_loader = DataLoader(train_dataset, batch_size=batch, shuffle=True,num_workers=0)
   
@@ -70,13 +53,11 @@ def train(net,output,device,epochs,batch,lr,input_shape,min_variance):
                 label = (label.to(device=device))
                 preds = net(imgs) 
                 loss = criterion(preds, label)
-                
-                #  preds = Softmax(*preds,dim=1)
                 if loss is not None:
                     epoch_loss += loss.item()
                 pbar.set_postfix(**{'loss (batch)': loss.item()})             
                 _,preds = torch.max(preds[0], dim=1)
-                correct_train+=torch.sum(preds==label).item()
+                correct_train+=torch.sum(preds==label.squeeze()).item()
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -115,7 +96,7 @@ def get_args():
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
-    parser.add_argument('-o', '--output', type=str, default='results/vgg19_bs/', dest='output')
+    parser.add_argument('-o', '--output', type=str, default='results/vgg11_bs/', dest='output')
     
     parser.add_argument('-e', '--epochs', type=int, default=20, dest='epochs')
     
@@ -143,12 +124,13 @@ if __name__ == '__main__':
     
     logging.info('Using device'+str(device))
     
-
+    # Define mini variance and noise variance 
     min_variance,noise_variance= 1e-4,1e-4
 
+    # Get the network and initialize the weights
     net=vgg(variant='vgg11',input_channel = 1 ,num_classes=2,min_variance=min_variance,noise_variance=noise_variance)
     net=utils.init_params(net)
-    # net =vgg19(n_classes=4,pretrained=False)
+  
     # make output directory if not exist
     if not os.path.isdir(args.output):
         distutils.dir_util.mkpath(args.output)
