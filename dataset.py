@@ -8,7 +8,7 @@ from torch.utils.data.dataset import Dataset
 import sys
 import h5py
 
-class oct_dataset(Dataset):
+class OCTDataset(Dataset):
     
     def __init__(self,path:str,shape=None,training=True):
         self.path=path
@@ -36,12 +36,13 @@ class oct_dataset(Dataset):
 
     def __getitem__(self, idx:int):
         img =np.array(imageio.imread( os.path.join(self.path,self.files[idx])))
-        # img=(img/255).astype(np.uint8)
+        
         if self.training:
             img=self.trans_train(img)
         else:
             img=self.trans_val_test(img)
-
+        
+        # repeat same thing in all three channels
         img=img.squeeze(0)
         img=img.repeat(3, 1, 1)
 
@@ -58,7 +59,31 @@ class oct_dataset(Dataset):
         
         return img,label
 
+class COVIDDataset(torchvision.datasets.ImageFolder):
+    def __init__(self,root,shape,train=True,transform=None):
+        super(COVIDDataset, self).__init__(root, transform)
 
+        if train:
+            self.transform = transforms.Compose([
+                                                transforms.Resize(size=(shape,shape)),
+                                                transforms.ColorJitter(brightness=0.25,contrast=0.25),
+                                                transforms.RandomResizedCrop(size=(shape,shape)),
+                                                transforms.RandomHorizontalFlip(), 
+                                                transforms.RandomVerticalFlip(),
+                                                transforms.RandomRotation(20), 
+                                                transforms.ToTensor(),
+                                                transforms.Normalize(mean=[0.5],std=[0.5])])
+        else:
+            self.transform = transforms.Compose([
+                                                transforms.Resize(size=(shape,shape)),
+                                                transforms.ToTensor(),
+                                                transforms.Normalize(mean=[0.5],std=[0.5])])    
+    def __getitem__(self, index):
+        path, target = self.samples[index]
+        sample = self.transform(self.loader(path))
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+        return sample, target
 
 class H5Dataset(Dataset):
     def __init__(self, path,shape,train=True):
@@ -95,6 +120,10 @@ class H5Dataset(Dataset):
             img=self.trans_train(img)
         else:
             img=self.trans_val_test(self.data[index])
+        
+        # repeat same thing in all three channels
+        img=img.squeeze(0)
+        img=img.repeat(3, 1, 1)
 
         return  img,self.label[index]
 

@@ -10,17 +10,13 @@ import torchvision
 from model import vgg19,resnet18,vgg
 import distutils.dir_util
 import torch.nn.functional as F
-from dataset import  oct_dataset,H5Dataset
+import dataset
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from adf_blocks import SoftmaxHeteroscedasticLoss
 
-def train(net,output,device,epochs,batch,lr,input_shape,min_variance):
+def train(net,output,device,epochs,train_dataset,val_dataset,batch,lr,input_shape,min_variance):
  
-    train_dataset=H5Dataset(path='pulmonary/train_data.h5',train=True,shape=input_shape)
-    
-    val_dataset=H5Dataset(path='pulmonary/val_data.h5',train=False,shape=input_shape)
-
     n_train, n_val = len(train_dataset), len(val_dataset)
 
     train_loader = DataLoader(train_dataset, batch_size=batch, shuffle=True,num_workers=0)
@@ -79,18 +75,19 @@ def train(net,output,device,epochs,batch,lr,input_shape,min_variance):
 
         if epoch>0:
             if val_acc[-1]>best_accuracy :
-                os.remove(output + f'epoch_vgg19.pth')
-                torch.save(net.state_dict(), output + f'epoch_vgg19.pth')
+                os.remove(output + f'vgg11.pth')
+                torch.save(net.state_dict(), output + f'vgg11.pth')
                 best_accuracy = val_acc[-1]
                 logging.info(f'checkpoint {epoch} saved !')
         else:
-            torch.save(net.state_dict(), output + f'epoch_vgg19.pth')
+            torch.save(net.state_dict(), output + f'vgg11.pth')
     
         #Save the model and training,validation Accuracy,dice score
         np.save(output+'traning_acc.npy',train_acc)
         np.save(output+'val_acc.npy',val_acc)
         np.save(output+'training_loss.npy',train_loss)
         np.save(output+'val_loss.npy',val_loss)
+    return net
 
 def get_args():
     
@@ -98,7 +95,7 @@ def get_args():
     
     parser.add_argument('-o', '--output', type=str, default='results/vgg11_bs/', dest='output')
     
-    parser.add_argument('-e', '--epochs', type=int, default=20, dest='epochs')
+    parser.add_argument('-e', '--epochs', type=int, default=25, dest='epochs')
     
     parser.add_argument('-b', '--batch', type=int, default=10, dest='batch')
     
@@ -128,7 +125,7 @@ if __name__ == '__main__':
     min_variance,noise_variance= 1e-4,1e-4
 
     # Get the network and initialize the weights
-    net=vgg(variant='vgg11',input_channel = 1 ,num_classes=2,min_variance=min_variance,noise_variance=noise_variance)
+    net=vgg(variant='vgg11',input_channel = 3 ,num_classes=2,min_variance=min_variance,noise_variance=noise_variance)
     net=utils.init_params(net)
   
     # make output directory if not exist
@@ -143,6 +140,17 @@ if __name__ == '__main__':
     # Transfer the model to cuda 
     net.to(device=device)
     
-    # Call trainer method        
-    train(net = net,output = args.output,device = device,epochs = args.epochs,batch = args.batch,lr = args.lr,input_shape=args.in_shape,min_variance=min_variance)
-        
+    #Get the dataset (Pulmonary Dataset for model pre training)
+    # train_dataset_pul=dataset.H5Dataset(path='pulmonary_data/train_data.h5',train=True,shape=args.in_shape)
+    # val_dataset_pul=dataset.H5Dataset(path='pulmonary_data/val_data.h5',train=False,shape=args.in_shape)
+
+    #Get the COVID dataset
+    train_dataset_covid=dataset.COVIDDataset(root='covid_data/train',shape=args.in_shape,train=True)
+    val_dataset_covid=dataset.COVIDDataset(root='covid_data/val',shape=args.in_shape,train=False)
+    
+    # # pretrain on pulmonary dataset        
+    # net = train(net = net,output = args.output,device = device,epochs = args.epochs,train_dataset=train_dataset_pul,val_dataset=val_dataset_pul,batch = args.batch,lr = args.lr,input_shape=args.in_shape,min_variance=min_variance)
+    
+    # train on covid dataset
+    _   = train(net = net,output = args.output,device = device,epochs = args.epochs,train_dataset=train_dataset_covid,val_dataset=val_dataset_covid,batch = args.batch,lr = args.lr,input_shape=args.in_shape,min_variance=min_variance)
+    
