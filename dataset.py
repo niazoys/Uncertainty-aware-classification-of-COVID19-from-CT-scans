@@ -72,12 +72,12 @@ class COVIDDataset(torchvision.datasets.ImageFolder):
                                                 transforms.RandomVerticalFlip(),
                                                 transforms.RandomRotation(20), 
                                                 transforms.ToTensor(),
-                                                transforms.Normalize(mean=[0.5],std=[0.5])])
+                                                transforms.Normalize(mean=[0.4914],std=[0.2023])])
         else:
             self.transform = transforms.Compose([
                                                 transforms.Resize(size=(shape,shape)),
                                                 transforms.ToTensor(),
-                                                transforms.Normalize(mean=[0.5],std=[0.5])])    
+                                                transforms.Normalize(mean=[0.4914],std=[0.2023])])    
     def __getitem__(self, index):
         path, target = self.samples[index]
         sample = self.transform(self.loader(path))

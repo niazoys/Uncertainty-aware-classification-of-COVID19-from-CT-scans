@@ -40,7 +40,7 @@ def eval_net(net,loader,criterion,device):
         loss = criterion(preds, label)
         loss_ += loss.item()  
         _,preds = torch.max(preds[0], dim=1)
-        total+=torch.sum(preds==label).item()
+        total+=torch.sum(preds==label.squeeze()).item()
         n_sample+=len(label)
         for i in range(len(preds)):
             y_true.append(label.cpu().numpy()[i])
@@ -162,3 +162,13 @@ def _normal_log_pdf(value, mu, stddev):
 # Tested against Matlab: Works correctly!
 def normpdf(value, mu=0.0, stddev=1.0):
     return torch.exp(_normal_log_pdf(value, mu, stddev))
+
+def freeze_unfreeze_dropout(net, training=True):
+    """Set Dropout mode to train or eval."""
+    for m in net.modules():
+        if m.__class__.__name__.startswith('Dropout'):
+            if training==True:
+                m.train()
+            else:
+                m.eval()
+    return net 
