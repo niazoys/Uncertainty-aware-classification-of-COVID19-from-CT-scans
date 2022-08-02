@@ -7,15 +7,14 @@ import numpy as np
 from tqdm import tqdm
 from torch import optim
 import torchvision
-from model import vgg19,resnet18,vgg
+from model import vgg,vgg_adf
 import distutils.dir_util
-import torch.nn.functional as F
+import torch.nn as nn
 import dataset
-import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from adf_blocks import SoftmaxHeteroscedasticLoss
 
-def train(net,output,device,epochs,train_dataset,val_dataset,batch,lr,input_shape,min_variance):
+def train(net,output,device,epochs,criterion,train_dataset,val_dataset,batch,lr):
  
     n_train, n_val = len(train_dataset), len(val_dataset)
 
@@ -24,8 +23,6 @@ def train(net,output,device,epochs,train_dataset,val_dataset,batch,lr,input_shap
     val_loader = DataLoader(val_dataset, batch_size=batch, shuffle=True,num_workers=0)
    
     optimizer = optim.Adam(net.parameters(), lr=1e-5*lr)
-    
-    criterion = SoftmaxHeteroscedasticLoss(min_variance=min_variance)
     
     logging.info("Training Set lenghth: "+str(n_train)+" Validation Set length: "+str(n_val))
     logging.info("Learning Rate: "+str(1e-5*lr))
@@ -93,19 +90,21 @@ def get_args():
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
-    parser.add_argument('-o', '--output', type=str, default='results/vgg11_bs/', dest='output')
+    parser.add_argument('-o', '--output', type=str, default='results/vgg11_tf_uq/', dest='output')
     
-    parser.add_argument('-e', '--epochs', type=int, default=25, dest='epochs')
+    parser.add_argument('-e', '--epochs', type=int, default=30, dest='epochs')
     
     parser.add_argument('-b', '--batch', type=int, default=10, dest='batch')
     
-    parser.add_argument('-l', '--learning', type=int, default=50, dest='lr')
+    parser.add_argument('-l', '--learning', type=int, default=100, dest='lr')
     
     parser.add_argument('-is', '--in_shape', type=int, default=128, dest='in_shape')
     
     # parser.add_argument('-f', '--load', type=str, default='results/vgg19_bs/epoch_vgg19.pth', dest='load')    
    
     parser.add_argument('-f', '--load', type=str, default=None, dest='load')
+
+    parser.add_argument('-ad', '--adf', type=str, default=True, dest='adf')
    
     return parser.parse_args()
 
@@ -120,14 +119,19 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     logging.info('Using device'+str(device))
-    
-    # Define mini variance and noise variance 
-    min_variance,noise_variance= 1e-4,1e-4
 
-    # Get the network and initialize the weights
-    net=vgg(variant='vgg11',input_channel = 3 ,num_classes=2,min_variance=min_variance,noise_variance=noise_variance)
-    net=utils.init_params(net)
-  
+    if args.adf:    
+        # Define mini variance and noise variance and other parameters 
+        min_variance,noise_variance= 1e-9,1e-3
+        dropout_prob=0.2
+        # Get the network and initialize the weights
+        net=vgg_adf(variant='vgg11',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
+        net=utils.init_params(net)
+        criterion = SoftmaxHeteroscedasticLoss(min_variance=min_variance)
+    else:
+        net=vgg(variant='vgg11',num_classes=2)
+        criterion= nn.CrossEntropyLoss()
+    
     # make output directory if not exist
     if not os.path.isdir(args.output):
         distutils.dir_util.mkpath(args.output)
@@ -141,16 +145,16 @@ if __name__ == '__main__':
     net.to(device=device)
     
     #Get the dataset (Pulmonary Dataset for model pre training)
-    # train_dataset_pul=dataset.H5Dataset(path='pulmonary_data/train_data.h5',train=True,shape=args.in_shape)
-    # val_dataset_pul=dataset.H5Dataset(path='pulmonary_data/val_data.h5',train=False,shape=args.in_shape)
+    train_dataset_pul=dataset.H5Dataset(path='pulmonary_data/train_data.h5',train=True,shape=args.in_shape)
+    val_dataset_pul=dataset.H5Dataset(path='pulmonary_data/val_data.h5',train=False,shape=args.in_shape)
 
     #Get the COVID dataset
     train_dataset_covid=dataset.COVIDDataset(root='covid_data/train',shape=args.in_shape,train=True)
     val_dataset_covid=dataset.COVIDDataset(root='covid_data/val',shape=args.in_shape,train=False)
     
     # # pretrain on pulmonary dataset        
-    # net = train(net = net,output = args.output,device = device,epochs = args.epochs,train_dataset=train_dataset_pul,val_dataset=val_dataset_pul,batch = args.batch,lr = args.lr,input_shape=args.in_shape,min_variance=min_variance)
+    net = train(net = net,output = args.output,device = device,criterion=criterion,epochs = args.epochs,train_dataset=train_dataset_pul,val_dataset=val_dataset_pul,batch = args.batch,lr = args.lr)
     
     # train on covid dataset
-    _   = train(net = net,output = args.output,device = device,epochs = args.epochs,train_dataset=train_dataset_covid,val_dataset=val_dataset_covid,batch = args.batch,lr = args.lr,input_shape=args.in_shape,min_variance=min_variance)
+    _   = train(net = net,output = args.output,device = device,criterion=criterion,epochs = args.epochs,train_dataset=train_dataset_covid,val_dataset=val_dataset_covid,batch=args.batch,lr=args.lr)
     
