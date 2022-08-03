@@ -1,12 +1,12 @@
 
 import os
-import imageio
-import numpy as np
-import torchvision.transforms as transforms
-import torchvision
-from torch.utils.data.dataset import Dataset
 import sys
 import h5py
+import imageio
+import torchvision
+import numpy as np
+import torchvision.transforms as transforms
+from torch.utils.data.dataset import Dataset
 
 class OCTDataset(Dataset):
     

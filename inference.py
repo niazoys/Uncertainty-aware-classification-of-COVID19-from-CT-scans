@@ -45,13 +45,13 @@ def predict(net,output,device,batch_size,use_adf,use_mcdo):
                 # Sum along batch dimension
                 neg_log_likelihood += torch.sum(batch_nll, 0).cpu().numpy().item()
 
-            preds = net(imgs) 
-            preds = F.softmax(preds,dim=1)
-            _,preds = torch.max(preds, dim=1)
-            correct+=correct.sum(preds==label).item()
-            for i in range(len(preds)):
-                y_true.append(label.cpu().numpy()[i])
-                y_pred.append(preds.cpu().numpy()[i])
+            # preds = net(imgs) 
+            # preds = F.softmax(preds,dim=1)
+            # _,preds = torch.max(preds, dim=1)
+            # correct+=correct.sum(preds==label).item()
+            # for i in range(len(preds)):
+            #     y_true.append(label.cpu().numpy()[i])
+            #     y_pred.append(preds.cpu().numpy()[i])
         
     accuracy = 100*correct/len(test_dataset)
     logging.info(f'Test Accuracy: {accuracy}')
