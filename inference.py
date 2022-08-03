@@ -13,30 +13,47 @@ import torch.nn.functional as F
 from dataset import COVIDDataset
 
 
-def predict(net,output,device,batch):
+def predict(net,output,device,batch_size,use_adf,use_mcdo):
  
     test_dataset = COVIDDataset("test/",training=False,shape=(128,128))
  
-    test_loader = torch.utils.DataLoader(test_dataset, batch_size=batch, shuffle=False,num_workers=3)
+    test_loader = torch.utils.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,num_workers=3)
 
-    y_true,y_pred,total,n_sample=[],[],0,0
-
+    y_true,y_pred,correct=[],[],0
+    test_loss,brier_score,nll=0,0,0
+    output_variance=None
+    
     net.eval()
+    with torch.no_grad():
+        for batch in enumerate(tqdm(test_loader)):
+            imgs, label = batch[1][0], batch[1][1]
+            imgs = (imgs.to(device=device))
+            label = (label.to(device=device))
+            mean, data_var, model_var = compute_preds(net, imgs, use_adf, use_mcdo)
+            
+            if data_var is not None and model_var is not None:
+                outputs_variance = data_var + model_var
+            elif data_var is not None:
+                outputs_variance = data_var
+            elif model_var is not None:
+                outputs_variance = model_var + args.tau
+            
+            one_hot_label=F.one_hot(label)
 
-    for batch in enumerate(tqdm(test_loader)):
-        imgs, label = batch[1][0], batch[1][1]
-        imgs = (imgs.to(device=device))
-        label = (label.to(device=device))
-        with torch.no_grad():
+            if outputs_variance is not None:
+                batch_nll = -utils.compute_log_likelihood(mean, one_hot_label, outputs_variance)
+                # Sum along batch dimension
+                neg_log_likelihood += torch.sum(batch_nll, 0).cpu().numpy().item()
+
             preds = net(imgs) 
-        preds = F.softmax(preds,dim=1)
-        _,preds = torch.max(preds, dim=1)
-        total+=torch.sum(preds==label).item()
-        for i in range(len(preds)):
-            y_true.append(label.cpu().numpy()[i])
-            y_pred.append(preds.cpu().numpy()[i])
+            preds = F.softmax(preds,dim=1)
+            _,preds = torch.max(preds, dim=1)
+            correct+=correct.sum(preds==label).item()
+            for i in range(len(preds)):
+                y_true.append(label.cpu().numpy()[i])
+                y_pred.append(preds.cpu().numpy()[i])
         
-    accuracy = 100*total/len(test_dataset)
+    accuracy = 100*correct/len(test_dataset)
     logging.info(f'Test Accuracy: {accuracy}')
     prec,recall=utils.stats(torch.tensor(y_pred),torch.tensor(y_true),n_classes=4,output_path=output)
     np.save(output+'y_pred.npy',y_pred)
@@ -47,7 +64,7 @@ def predict(net,output,device,batch):
     file.write('Recall = %f\n'%(recall))
     file.close()
 
-def compute_preds(net, inputs, use_adf=False, use_mcdo=False):
+def compute_preds(net, inputs, min_variance=1e-4, use_adf=False, use_mcdo=False):
     
     model_variance = None
     data_variance = None
@@ -55,39 +72,43 @@ def compute_preds(net, inputs, use_adf=False, use_mcdo=False):
     def keep_variance(x, min_variance):
         return x + min_variance
 
-    keep_variance_fn = lambda x: keep_variance(x, min_variance=args.min_variance)
+    var_fun = lambda x: keep_variance(x, min_variance=min_variance)
     softmax = nn.Softmax(dim=1)
-    adf_softmax = adf_blocks.Softmax(dim=1, keep_variance_fn=keep_variance_fn)
+    adf_softmax = adf_blocks.Softmax(dim=1, keep_variance_fn=var_fun)
     
     net.eval()
+
     if use_mcdo:
+        # Unfreeze the dropout layers
         net = utils.freeze_unfreeze_dropout(net, True)
+        #  make prediction n times 
         outputs = [net(inputs) for i in range(args.num_samples)]
         
         if use_adf:
             outputs = [adf_softmax(*outs) for outs in outputs]
             outputs_mean = [mean for (mean, var) in outputs]
             data_variance = [var for (mean, var) in outputs]
-            data_variance = torch.stack(data_variance)
-            data_variance = torch.mean(data_variance, dim=0)
+            data_variance = torch.mean(torch.stack(data_variance), dim=0)
         else:
             outputs_mean = [softmax(outs) for outs in outputs]
-            
+        
         outputs_mean = torch.stack(outputs_mean)
+        # Compute the prediction variance (varinace of n number of prediction trail mean) 
         model_variance = torch.var(outputs_mean, dim=0)
-        # Compute MCDO prediction
+        # Compute MCDO prediction (Average of n number of prediction trail mean)
         outputs_mean = torch.mean(outputs_mean, dim=0)
     else:
         outputs = net(inputs)
-        if adf:
+       
+        if use_adf:
             outputs_mean, data_variance = adf_softmax(*outputs)
         else:
             outputs_mean = outputs
-        
+    
+    #refreeze the dropout layers
     net = utils.freeze_unfreeze_dropout(net, False)
     
     return outputs_mean, data_variance, model_variance
-
 
 def get_args():
     

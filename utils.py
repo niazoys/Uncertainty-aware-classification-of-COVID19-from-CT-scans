@@ -172,3 +172,31 @@ def freeze_unfreeze_dropout(net, training=True):
             else:
                 m.eval()
     return net 
+
+def one_hot_pred_from_label(y_pred, labels):
+    y_true = torch.zeros_like(y_pred)
+    ones = torch.ones_like(y_pred)
+    indexes = [l for l in labels]
+    y_true[torch.arange(labels.size(0)), indexes] = ones[torch.arange(labels.size(0)), indexes]
+    
+    return y_true
+
+def resize2D_as(inputs, output_as, mode="bilinear"):
+    size_targets = [output_as.size(2), output_as.size(3)]    
+    size_inputs = [inputs.size(2), inputs.size(3)]
+
+    if all([size_inputs == size_targets]):
+        return inputs  # nothing to do
+    elif any([size_targets < size_inputs]):
+        resized = F.adaptive_avg_pool2d(inputs, size_targets)  # downscaling
+    else:
+        resized = F.upsample(inputs, size=size_targets, mode=mode)  # upsampling
+
+    # correct scaling
+    return resized
+
+def compute_log_likelihood(y_pred, y_true, sigma):
+    dist = torch.distributions.normal.Normal(loc=y_pred, scale=sigma)
+    log_likelihood = dist.log_prob(y_true)
+    log_likelihood = torch.mean(log_likelihood, dim=1)
+    return log_likelihood

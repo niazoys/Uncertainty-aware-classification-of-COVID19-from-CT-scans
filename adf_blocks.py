@@ -1,8 +1,8 @@
 import torch
+import utils
 import operator
 import torch.nn as nn
 from itertools import islice
-import utils
 from collections import OrderedDict
 from torch.nn import functional as F
 from torch.nn.parameter import Parameter
@@ -11,7 +11,6 @@ from torch.nn.modules.utils import _pair
 from torch.nn.modules.conv import _ConvTransposeMixin
 
 ''' This script has been adapted from the https://github.com/uzh-rpg/deep_uncertainty_estimation '''
-
 
 class AvgPool2d(nn.Module):
 
@@ -34,7 +33,6 @@ class AvgPool2d(nn.Module):
         #      outputs_variance*1/(H*W) should be enough already
         
         return outputs_mean, outputs_variance
-    
     
 class Softmax(nn.Module):
     def __init__(self, dim=1, keep_variance_fn=None):
@@ -66,7 +64,6 @@ class Softmax(nn.Module):
             outputs_variance = self._keep_variance_fn(outputs_variance)
         return outputs_mean, outputs_variance
     
-
 class ReLU(nn.Module):
     def __init__(self, keep_variance_fn=None):
         super(ReLU, self).__init__()
@@ -83,7 +80,6 @@ class ReLU(nn.Module):
         if self._keep_variance_fn is not None:
             outputs_variance = self._keep_variance_fn(outputs_variance)
         return outputs_mean, outputs_variance
-
 
 class LeakyReLU(nn.Module):
     def __init__(self, negative_slope=0.01, keep_variance_fn=None):
@@ -114,7 +110,6 @@ class LeakyReLU(nn.Module):
             outputs_variance = self._keep_variance_fn(outputs_variance)
         return outputs_mean, outputs_variance
 
-
 class Dropout(nn.Module):
     """ADF implementation of nn.Dropout2d"""
     def __init__(self, p: float = 0.5, keep_variance_fn=None, inplace=False):
@@ -141,7 +136,6 @@ class Dropout(nn.Module):
         if self._keep_variance_fn is not None:
             outputs_variance = self._keep_variance_fn(outputs_variance)
         return inputs_mean, outputs_variance
-
 
 class MaxPool2d(nn.Module):
     def __init__(self, keep_variance_fn=None):
@@ -185,7 +179,6 @@ class MaxPool2d(nn.Module):
         outputs_mean, outputs_variance = self._max_pool_2x1(z_mean, z_variance)
         return outputs_mean, outputs_variance
 
-
 class Linear(nn.Module):
     def __init__(self, in_features, out_features, bias=True, keep_variance_fn=None):
         super(Linear, self).__init__()
@@ -204,7 +197,6 @@ class Linear(nn.Module):
         if self._keep_variance_fn is not None:
             outputs_variance = self._keep_variance_fn(outputs_variance)
         return outputs_mean, outputs_variance
-
 
 class BatchNorm2d(nn.Module):
     _version = 2
@@ -284,7 +276,6 @@ class BatchNorm2d(nn.Module):
             outputs_variance = self._keep_variance_fn(outputs_variance)
         return outputs_mean, outputs_variance
 
-
 class Conv2d(_ConvNd):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True,
@@ -306,7 +297,6 @@ class Conv2d(_ConvNd):
         if self._keep_variance_fn is not None:
             outputs_variance = self._keep_variance_fn(outputs_variance)
         return outputs_mean, outputs_variance
-
 
 class ConvTranspose2d(_ConvTransposeMixin, _ConvNd):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
@@ -333,7 +323,6 @@ class ConvTranspose2d(_ConvTransposeMixin, _ConvNd):
         if self._keep_variance_fn is not None:
             outputs_variance = self._keep_variance_fn(outputs_variance)
         return outputs_mean, outputs_variance
-
 
 class Sequential(nn.Module):
     def __init__(self, *args):
@@ -394,8 +383,7 @@ class SoftmaxHeteroscedasticLoss(torch.nn.Module):
         
     def forward(self, outputs, targets, eps=1e-5):
         mean, var = self.adf_softmax(*outputs)
-        targets = one_hot_pred_from_label(mean, targets)
-        
+        targets = F.one_hot(targets)
         precision = 1/(var + eps)
 
         loss=torch.mean(0.5*precision * (targets-mean)**2 + 0.5*torch.log(var+eps))
@@ -405,34 +393,4 @@ class SoftmaxHeteroscedasticLoss(torch.nn.Module):
 
         return loss
 
-def concatenate_as(tensor_list, tensor_as, dim, mode="bilinear"):
-    means = [resize2D_as(x[0], tensor_as[0], mode=mode) for x in tensor_list]
-    variances = [resize2D_as(x[1], tensor_as[0], mode=mode) for x in tensor_list]
-    means = torch.cat(means, dim=dim)
-    variances = torch.cat(variances, dim=dim)
-    return means, variances
 
-def resize2D(inputs, size_targets, mode="bilinear"):
-    size_inputs = [inputs.size(2), inputs.size(3)]
-
-    if all([size_inputs == size_targets]):
-        return inputs  # nothing to do
-    elif any([size_targets < size_inputs]):
-        resized = F.adaptive_avg_pool2d(inputs, size_targets)  # downscaling
-    else:
-        resized = F.upsample(inputs, size=size_targets, mode=mode)  # upsampling
-
-    # correct scaling
-    return resized
-
-def resize2D_as(inputs, output_as, mode="bilinear"):
-    size_targets = [output_as.size(2), output_as.size(3)]
-    return resize2D(inputs, size_targets, mode=mode)
-
-def one_hot_pred_from_label(y_pred, labels):
-    y_true = torch.zeros_like(y_pred)
-    ones = torch.ones_like(y_pred)
-    indexes = [l for l in labels]
-    y_true[torch.arange(labels.size(0)), indexes] = ones[torch.arange(labels.size(0)), indexes]
-    
-    return y_true
