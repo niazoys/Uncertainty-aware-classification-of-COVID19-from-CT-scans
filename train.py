@@ -7,16 +7,16 @@ import dataset
 import numpy as np
 from tqdm import tqdm
 import distutils.dir_util
-from model import vgg,vgg_adf
+from model import vgg,vgg_adf,resnet_adf
 from adf_blocks import SoftmaxHeteroscedasticLoss
 
 def train(net,device,criterion,train_dataset,val_dataset,args):
  
     n_train, n_val = len(train_dataset), len(val_dataset)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch, shuffle=True,num_workers=0)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch, shuffle=True,num_workers=3)
   
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch, shuffle=True,num_workers=0)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch, shuffle=True,num_workers=3)
    
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-5*args.lr)
     
@@ -88,9 +88,9 @@ def get_args():
     
     parser.add_argument('-o', '--output', type=str, default='results/vgg11_tf_uq/', dest='output')
     
-    parser.add_argument('-e', '--epochs', type=int, default=30, dest='epochs')
+    parser.add_argument('-e', '--epochs', type=int, default=20, dest='epochs')
     
-    parser.add_argument('-b', '--batch', type=int, default=10, dest='batch')
+    parser.add_argument('-b', '--batch', type=int, default=25, dest='batch')
     
     parser.add_argument('-l', '--learning', type=int, default=100, dest='lr')
     
@@ -118,10 +118,11 @@ if __name__ == '__main__':
 
     if args.adf:    
         # Define mini variance and noise variance and other parameters 
-        min_variance,noise_variance= 1e-3,1e-3
-        dropout_prob=0.2
+        min_variance,noise_variance= 1e-5,1e-5
+        dropout_prob=0.1
         # Get the network and initialize the weights
-        net=vgg_adf(variant='vgg11',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
+        # net=vgg_adf(variant='vgg11',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
+        net=resnet_adf(variant='resnet18',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
         net=utils.init_params(net)
         criterion = SoftmaxHeteroscedasticLoss(min_variance=min_variance)
     else:

@@ -125,13 +125,14 @@ def init_params(net):
     ''' Init layer parameters '''
     for m in net.modules():
         if isinstance(m, adf_blocks.Conv2d):
-            init.xavier_normal_(m.weight)
-            init.constant_(m.bias, 0)
+            init.kaiming_normal_(m.weight)
+            if m.bias is not None:
+                init.constant_(m.bias, 0)
         elif isinstance(m, adf_blocks.BatchNorm2d):
             init.normal_(m.weight)
             init.constant_(m.bias, 0)
         elif isinstance(m, adf_blocks.Linear):
-            init.xavier_normal_(m.weight)
+            init.kaiming_normal_(m.weight)
             init.constant_(m.bias, 0)
     return net
 
