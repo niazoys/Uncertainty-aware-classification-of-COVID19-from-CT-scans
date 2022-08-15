@@ -1,4 +1,5 @@
-__pycache__/utils.cpython-38.pyc
+__pycache__/*
 .vscode
 plot.ipynb
 results
+classification_results.ipynb

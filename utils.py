@@ -1,13 +1,11 @@
 
 import torch
+import adf_blocks
 import numpy as np
 import seaborn as sn
 from tqdm import tqdm
-import torch.nn as nn
-import adf_blocks
 from numbers import Number
 import torch.nn.init as init
-from typing import Optional
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
 from torchmetrics.functional import recall,precision,confusion_matrix
@@ -71,56 +69,6 @@ def display_images(imageSet,mutiple=True):
         matplotlib.pyplot.imshow(imageSet, cmap='gray')
         matplotlib.pyplot.show()
 
-def one_hot(labels: torch.Tensor,
-                num_classes: int,
-                device: Optional[torch.device] = None,
-                dtype: Optional[torch.dtype] = None,
-                eps: Optional[float] = 1e-6) -> torch.Tensor:
-        r"""Converts an integer label 2D tensor to a one-hot 3D tensor.
-
-        Args:
-            labels (torch.Tensor) : tensor with labels of shape :math:`(N, H, W)`,
-                                    where N is batch siz. Each value is an integer
-                                    representing correct classification.
-            num_classes (int): number of classes in labels.
-            device (Optional[torch.device]): the desired device of returned tensor.
-            Default: if None, uses the current device for the default tensor type
-            (see torch.set_default_tensor_type()). device will be the CPU for CPU
-            tensor types and the current CUDA device for CUDA tensor types.
-            dtype (Optional[torch.dtype]): the desired data type of returned
-            tensor. Default: if None, infers data type from values.
-
-        Returns:
-            torch.Tensor: the labels in one hot tensor.
-
-        Examples::
-            >>> labels = torch.LongTensor([[[0, 1], [2, 0]]])
-            >>> tgm.losses.one_hot(labels, num_classes=3)
-            tensor([[[[1., 0.],
-                    [0., 1.]],
-                    [[0., 1.],
-                    [0., 0.]],
-                    [[0., 0.],
-                    [1., 0.]]]]
-        """
-        if not torch.is_tensor(labels):
-            raise TypeError("Input labels type is not a torch.Tensor. Got {}"
-                            .format(type(labels)))
-        if not len(labels.shape) == 3:
-            raise ValueError("Invalid depth shape, we expect BxHxW. Got: {}"
-                            .format(labels.shape))
-        if not labels.dtype == torch.int64:
-            raise ValueError(
-                "labels must be of the same dtype torch.int64. Got: {}" .format(
-                    labels.dtype))
-        if num_classes < 1:
-            raise ValueError("The number of classes must be bigger than one."
-                            " Got: {}".format(num_classes))
-        batch_size, height, width = labels.shape
-        one_hot = torch.zeros(batch_size, num_classes, height, width,
-                            device=device, dtype=dtype)
-        return one_hot.scatter_(1, labels.unsqueeze(1), 1.0) + eps
-
 def init_params(net):
     ''' Init layer parameters '''
     for m in net.modules():
@@ -148,7 +96,6 @@ def brierscore(input, target_one_hot):
 def keep_variance(x, min_variance):
         return x + min_variance
 
-# Tested against Matlab: Works correctly!
 def normcdf(value, mu=0.0, stddev=1.0):
     sinv = (1.0 / stddev) if isinstance(stddev, Number) else stddev.reciprocal()
     return 0.5 * (1.0 + torch.erf((value - mu) * sinv / np.sqrt(2.0)))
@@ -158,7 +105,6 @@ def _normal_log_pdf(value, mu, stddev):
     log_scale = np.log(stddev) if isinstance(stddev, Number) else torch.log(stddev)
     return -((value - mu) ** 2) / (2.0*var) - log_scale - np.log(np.sqrt(2.0*np.pi))
 
-# Tested against Matlab: Works correctly!
 def normpdf(value, mu=0.0, stddev=1.0):
     return torch.exp(_normal_log_pdf(value, mu, stddev))
 
@@ -171,14 +117,6 @@ def freeze_unfreeze_dropout(net, training=True):
             else:
                 m.eval()
     return net 
-
-def one_hot_pred_from_label(y_pred, labels):
-    y_true = torch.zeros_like(y_pred)
-    ones = torch.ones_like(y_pred)
-    indexes = [l for l in labels]
-    y_true[torch.arange(labels.size(0)), indexes] = ones[torch.arange(labels.size(0)), indexes]
-    
-    return y_true
 
 def resize2D_as(inputs, output_as, mode="bilinear"):
     size_targets = [output_as.size(2), output_as.size(3)]    
