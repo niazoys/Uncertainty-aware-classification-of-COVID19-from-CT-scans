@@ -1,6 +1,6 @@
 ## Uncertainty-aware-classification-of-COVID19-from-CT-scans
 
-This project is about practical experimentation of uncertainty quantification (aleatoric and epistemic uncertainty) with popular deep learning architectures in high stake classification scenario (e.g. disease diagonosis). An attempt to replicate Loquercio et al.[[1]](#1) and Gast et al.[[2]](#2) study on classification uncertainty of COVID cases detection.
+This project is about practical experimentation of uncertainty quantification (aleatoric and epistemic uncertainty) with popular deep learning architectures in high stake classification scenario (e.g. disease diagnosis). An attempt to replicate Loquercio et al.[[1]](#1) and Gast et al.[[2]](#2) study on classification uncertainty of COVID cases detection.
 
 
 ### Currently working on refactoring the repository, results and further details will be available soon.
