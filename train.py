@@ -86,7 +86,7 @@ def get_args():
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
-    parser.add_argument('-o', '--output', type=str, default='results/vgg11_tf_uq/', dest='output')
+    parser.add_argument('-o', '--output', type=str, default='results/vgg16_tf_uq/', dest='output')
     
     parser.add_argument('-e', '--epochs', type=int, default=20, dest='epochs')
     
@@ -118,15 +118,15 @@ if __name__ == '__main__':
 
     if args.adf:    
         # Define mini variance and noise variance and other parameters 
-        min_variance,noise_variance= 1e-5,1e-5
-        dropout_prob=0.1
+        min_variance,noise_variance= 1e-3,1e-4
+        dropout_prob=0.2
         # Get the network and initialize the weights
-        # net=vgg_adf(variant='vgg11',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
-        net=resnet_adf(variant='resnet18',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
+        net=vgg_adf(variant='vgg19',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
+        # net=resnet_adf(variant='resnet18',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
         net=utils.init_params(net)
         criterion = SoftmaxHeteroscedasticLoss(min_variance=min_variance)
     else:
-        net=vgg(variant='vgg11',num_classes=2)
+        net=vgg(variant='vgg16',num_classes=2)
         criterion= torch.nn.CrossEntropyLoss()
     
     # make output directory if not exist
@@ -142,7 +142,7 @@ if __name__ == '__main__':
     net.to(device=device)
     
     #Get the dataset (Pulmonary Dataset for model pre training)
-    train_dataset_pul=dataset.H5Dataset(path='pulmonary_data/train_data.h5',train=True,shape=args.in_shape)
+    train_dataset_pul=dataset.H5Dataset(path='pulmonary_data/train_data.h5',train=False,shape=args.in_shape)
     val_dataset_pul=dataset.H5Dataset(path='pulmonary_data/val_data.h5',train=False,shape=args.in_shape)
 
     #Get the COVID dataset

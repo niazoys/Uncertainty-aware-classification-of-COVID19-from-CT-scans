@@ -1,3 +1,4 @@
+from cmath import nan
 import sys
 import torch
 import adf_blocks 
@@ -23,10 +24,10 @@ class VGG(nn.Module):
         self.var_fun = lambda x: keep_variance(x, min_variance=min_variance)
         self.features = features
         self._noise_variance = noise_variance
-        self.avgpool = adf_blocks.AvgPool2d(keep_variance_fn=self.var_fun,kernel_size=4)
+        self.avgpool = adf_blocks.AvgPool2d(keep_variance_fn=self.var_fun,kernel_size=2)
         self.classifier = adf_blocks.Sequential(
-            adf_blocks.Linear(in_features= 512 , out_features=512 , keep_variance_fn=self.var_fun),
-            adf_blocks.LeakyReLU(keep_variance_fn=self.var_fun),
+            adf_blocks.Linear(in_features= 512*4 , out_features=512 , keep_variance_fn=self.var_fun),
+            adf_blocks.ReLU(keep_variance_fn=self.var_fun),
             adf_blocks.Dropout(p=drop_probability,keep_variance_fn=self.var_fun),
             # Linear(in_features=4096,out_features=4096,keep_variance_fn=self.var_fun),
             # ReLU(keep_variance_fn=self.var_fun),
@@ -47,7 +48,7 @@ class VGG(nn.Module):
         x = self.classifier(*x)
         return x
     
-def make_layers(cfg: List[Union[str, int]],dropout_prob,min_variance: float =1e-3,input_channel: int= 3) -> adf_blocks.Sequential:
+def make_layers(cfg: List[Union[str, int]],dropout_prob,min_variance: float =1e-5,input_channel: int= 3) -> adf_blocks.Sequential:
     layers: List[nn.Module] = []
     var_fun=lambda x:keep_variance(x,min_variance=min_variance)
     in_channels=input_channel
@@ -57,7 +58,7 @@ def make_layers(cfg: List[Union[str, int]],dropout_prob,min_variance: float =1e-
         else:
             v = cast(int, v)
             conv2d = adf_blocks.Conv2d(in_channels, v,kernel_size=3,padding=1,keep_variance_fn=var_fun)
-            layers += [conv2d, adf_blocks.BatchNorm2d(v,keep_variance_fn=var_fun), adf_blocks.LeakyReLU(keep_variance_fn=var_fun),adf_blocks.Dropout(p=dropout_prob,keep_variance_fn=var_fun)]
+            layers += [conv2d, adf_blocks.BatchNorm2d(v,keep_variance_fn=var_fun), adf_blocks.ReLU(keep_variance_fn=var_fun),adf_blocks.Dropout(p=dropout_prob,keep_variance_fn=var_fun)]
             in_channels = v
 
     return adf_blocks.Sequential(*layers)

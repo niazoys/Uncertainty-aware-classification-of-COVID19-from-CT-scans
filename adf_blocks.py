@@ -1,6 +1,8 @@
+from cmath import isnan
 import torch
 import utils
 import operator
+import numpy as np
 import torch.nn as nn
 from itertools import islice
 from collections import OrderedDict
@@ -108,6 +110,10 @@ class LeakyReLU(nn.Module):
                            - 2.0 * self._negative_slope * covxy
         if self._keep_variance_fn is not None:
             outputs_variance = self._keep_variance_fn(outputs_variance)
+        
+        # temp=outputs_mean.detach().cpu().numpy()
+        # if np.isnan(temp.any()):
+        #     print()
         return outputs_mean, outputs_variance
 
 class Dropout(nn.Module):
@@ -387,9 +393,6 @@ class SoftmaxHeteroscedasticLoss(torch.nn.Module):
         precision = 1/(var + eps)
 
         loss=torch.mean(0.5*precision * (targets-mean)**2 + 0.5*torch.log(var+eps))
-        
-        if loss<0:
-            print()
 
         return loss
 

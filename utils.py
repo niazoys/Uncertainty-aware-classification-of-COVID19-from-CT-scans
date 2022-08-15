@@ -136,12 +136,10 @@ def init_params(net):
             init.constant_(m.bias, 0)
     return net
 
-def brierscore(input, target): 
-    target = target.view(-1,1)
-    y_one_hot = torch.nn.functional.one_hot(target,num_classes=input.shape[1])
+def brierscore(input, target_one_hot): 
     
     pt = F.softmax(input, dim = 1)
-    squared_diff = torch.sum((y_one_hot.squeeze() - pt) ** 2, axis = 1)
+    squared_diff = torch.sum((target_one_hot.squeeze() - pt) ** 2, axis = 1)
     sum_squared_diff = torch.sum(squared_diff)
     loss = sum_squared_diff / (float(2*pt.shape[0])) #*2 for boundaries between [0,1]
 

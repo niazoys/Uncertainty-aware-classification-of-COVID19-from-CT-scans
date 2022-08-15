@@ -4,32 +4,33 @@ import utils
 import logging
 import argparse
 import adf_blocks
-import numpy as np
-import torch.nn as nn
 from tqdm import tqdm
-from model import vgg,vgg_adf
 import distutils.dir_util
-import torch.nn.functional as F
 from dataset import COVIDDataset
 
 
-def predict(net,output,device,batch_size,use_adf,use_mcdo):
+from model import vgg,vgg_adf,resnet_adf
+
+def predict(net,device,batch_size,use_adf=True,use_mcdo=True):
  
-    test_dataset = COVIDDataset("test/",training=False,shape=(128,128))
+    test_dataset = COVIDDataset("covid_data/test/",train=False,shape=128)
  
-    test_loader = torch.utils.DataLoader(test_dataset, batch_size=batch_size, shuffle=False,num_workers=3)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    criterion = torch.nn.CrossEntropyLoss()
 
     y_true,y_pred,correct=[],[],0
     test_loss,brier_score,nll=0,0,0
-    output_variance=None
-    
+    outputs_variance=None
+    total=0
     net.eval()
+
     with torch.no_grad():
-        for batch in enumerate(tqdm(test_loader)):
-            imgs, label = batch[1][0], batch[1][1]
+        for _,batch in enumerate(tqdm(test_loader)):
+            imgs, label = batch[0], batch[1]
             imgs = (imgs.to(device=device))
             label = (label.to(device=device))
-            mean, data_var, model_var = compute_preds(net, imgs, use_adf, use_mcdo)
+            means, data_var, model_var = compute_preds(net, imgs, use_adf, use_mcdo)
             
             if data_var is not None and model_var is not None:
                 outputs_variance = data_var + model_var
@@ -38,31 +39,38 @@ def predict(net,output,device,batch_size,use_adf,use_mcdo):
             elif model_var is not None:
                 outputs_variance = model_var + args.tau
             
-            one_hot_label=F.one_hot(label)
+            one_hot_label=torch.nn.functional.one_hot(label,num_classes=2)
 
+            # Compute NLL
             if outputs_variance is not None:
-                batch_nll = -utils.compute_log_likelihood(mean, one_hot_label, outputs_variance)
+                batch_nll = -utils.compute_log_likelihood(means, one_hot_label, outputs_variance)
                 # Sum along batch dimension
-                neg_log_likelihood += torch.sum(batch_nll, 0).cpu().numpy().item()
+                nll += torch.sum(batch_nll, 0).cpu().numpy().item()
+            
+            # Compute Brier score
+            batch_brier_score=utils.brierscore(means,one_hot_label)
+            # Sum along batch dimension
+            brier_score += torch.sum(batch_brier_score, 0).cpu().numpy().item()
+            
+            # Test loss for evaluation
+            loss = criterion(means, label)
+            test_loss += loss.item()
 
-            # preds = net(imgs) 
-            # preds = F.softmax(preds,dim=1)
-            # _,preds = torch.max(preds, dim=1)
-            # correct+=correct.sum(preds==label).item()
-            # for i in range(len(preds)):
-            #     y_true.append(label.cpu().numpy()[i])
-            #     y_pred.append(preds.cpu().numpy()[i])
-        
-    accuracy = 100*correct/len(test_dataset)
-    logging.info(f'Test Accuracy: {accuracy}')
-    prec,recall=utils.stats(torch.tensor(y_pred),torch.tensor(y_true),n_classes=4,output_path=output)
-    np.save(output+'y_pred.npy',y_pred)
-    np.save(output+'y_true.npy',y_true)
-    #Save the stats
-    file = open(output+'stat.txt','w')
-    file.write('Precision = %f\n'%(prec))
-    file.write('Recall = %f\n'%(recall))
-    file.close()
+            # Compute predictions and numer of correct predictions
+            _, predicted = means.max(1)
+            total += label.size(0)
+            correct += predicted.eq(label).sum().item()
+            
+            # Keep the results for further use
+            y_pred.append(predicted)
+            y_true.append(label)
+    
+    # Compute stat for whole test set
+    accuracy = 100.*correct/total
+    brier_score = brier_score/total
+    nll = nll/total
+    
+    return accuracy, brier_score, nll
 
 def compute_preds(net, inputs, min_variance=1e-4, use_adf=False, use_mcdo=False):
     
@@ -73,7 +81,7 @@ def compute_preds(net, inputs, min_variance=1e-4, use_adf=False, use_mcdo=False)
         return x + min_variance
 
     var_fun = lambda x: keep_variance(x, min_variance=min_variance)
-    softmax = nn.Softmax(dim=1)
+    softmax = torch.nn.Softmax(dim=1)
     adf_softmax = adf_blocks.Softmax(dim=1, keep_variance_fn=var_fun)
     
     net.eval()
@@ -86,17 +94,17 @@ def compute_preds(net, inputs, min_variance=1e-4, use_adf=False, use_mcdo=False)
         
         if use_adf:
             outputs = [adf_softmax(*outs) for outs in outputs]
-            outputs_mean = [mean for (mean, var) in outputs]
-            data_variance = [var for (mean, var) in outputs]
-            data_variance = torch.mean(torch.stack(data_variance), dim=0)
+            outputs_mean = [means for (means, var) in outputs]
+            data_variance = [var for (means, var) in outputs]
+            data_variance = torch.means(torch.stack(data_variance), dim=0)
         else:
             outputs_mean = [softmax(outs) for outs in outputs]
         
         outputs_mean = torch.stack(outputs_mean)
-        # Compute the prediction variance (varinace of n number of prediction trail mean) 
+        # Compute the prediction variance (varinace of n number of prediction trail means) 
         model_variance = torch.var(outputs_mean, dim=0)
-        # Compute MCDO prediction (Average of n number of prediction trail mean)
-        outputs_mean = torch.mean(outputs_mean, dim=0)
+        # Compute MCDO prediction (Average of n number of prediction trail means)
+        outputs_mean = torch.means(outputs_mean, dim=0)
     else:
         outputs = net(inputs)
        
@@ -118,7 +126,7 @@ def get_args():
     
     parser.add_argument('-n', '--network', type=str, default='resnet34', dest='net')
     
-    parser.add_argument('-f', '--load', type=str, default='results/vgg19_bs/', dest='load')  
+    parser.add_argument('-f', '--load', type=str, default='results/resnet18_tf_uq/', dest='load')  
     
     parser.add_argument('-ad', '--adf', type=str, default=True, dest='adf')
     
@@ -136,12 +144,19 @@ if __name__ == '__main__':
     
     logging.info('Using device'+str(device))
    
-    net=vgg(n_classes=4,pretrained=False)
-   
+    if args.adf:    
+        # Define mini variance and noise variance and other parameters 
+        min_variance,noise_variance= 1e-3,1e-4
+        dropout_prob=0.2
+        # net=vgg_adf(variant='vgg19',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
+        net=resnet_adf(variant='resnet18',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
 
+    else:
+        net=vgg(variant='vgg16',num_classes=2)
+   
     #laod weights
     if args.load != None:        
-        net.load_state_dict(torch.load(args.load+'epoch_vgg19.pth', map_location=device))
+        net.load_state_dict(torch.load(args.load+'resnet18.pth', map_location=device))
         logging.info(f'Model loaded from {args.load}')
     
     # create directory if not already exists
@@ -152,5 +167,11 @@ if __name__ == '__main__':
 
     net.to(device=device)
             
-    predict(net = net,output = output,device = device,batch = args.batch)
-        
+    accuracy, brier_score, nll=predict(net = net,device = device,batch_size = args.batch)
+
+
+    logging.info(f'Test Accuracy: {accuracy}')
+    logging.info(f'Test Brier Score: {brier_score}')
+    logging.info(f'Negativge Log Loss: {nll}')    
+
+  
