@@ -1,7 +1,6 @@
 import os
 import torch
 import utils
-import model
 import logging
 import argparse
 import adf_blocks
@@ -10,7 +9,7 @@ import distutils.dir_util
 from dataset import COVIDDataset
 
 
-def predict(net,device,batch_size,use_adf=True,use_mcdo=True):
+def predict(net,device,batch_size,use_adf,use_mcdo):
  
     test_dataset = COVIDDataset("covid_data/test/",train=False,shape=128)
  
@@ -36,8 +35,10 @@ def predict(net,device,batch_size,use_adf=True,use_mcdo=True):
             elif data_var is not None:
                 outputs_variance = data_var
             elif model_var is not None:
-                outputs_variance = model_var + args.tau
-            
+                outputs_variance = model_var + 1e-5
+                #total prediction varince (model variance)
+                total_prediction_variance+=model_var
+
             one_hot_label=torch.nn.functional.one_hot(label,num_classes=2)
 
             # Compute NLL
@@ -60,9 +61,6 @@ def predict(net,device,batch_size,use_adf=True,use_mcdo=True):
             total += label.size(0)
             correct += predicted.eq(label).sum().item()
 
-            #total prediction varince (model variance)
-            total_prediction_variance+=model_var
-
             # Keep the results for further use
             y_pred.append(predicted)
             y_true.append(label)
@@ -72,9 +70,9 @@ def predict(net,device,batch_size,use_adf=True,use_mcdo=True):
     brier_score = brier_score/total
     nll = nll/total
     
-    return accuracy, brier_score, nll, data_var, total_prediction_variance
+    return accuracy, brier_score, nll, total_prediction_variance
 
-def compute_preds(net, inputs, min_variance=1e-4, use_adf=False, use_mcdo=False):
+def compute_preds(net, inputs,  use_adf, use_mcdo , min_variance=1e-4):
     
     model_variance = None
     data_variance = None
@@ -98,7 +96,7 @@ def compute_preds(net, inputs, min_variance=1e-4, use_adf=False, use_mcdo=False)
             outputs = [adf_softmax(*outs) for outs in outputs]
             outputs_mean = [means for (means, _) in outputs]
             data_variance = [var for (_ , var) in outputs]
-            data_variance = torch.means(torch.stack(data_variance), dim=0)
+            data_variance = torch.mean(torch.stack(data_variance), dim=0) 
         else:
             outputs_mean = [softmax(outs) for outs in outputs]
         
@@ -106,7 +104,7 @@ def compute_preds(net, inputs, min_variance=1e-4, use_adf=False, use_mcdo=False)
         # Compute the prediction variance (varinace of n number of prediction trail means) 
         model_variance = torch.var(outputs_mean, dim=0)
         # Compute MCDO prediction (Average of n number of prediction trail means)
-        outputs_mean = torch.means(outputs_mean, dim=0)
+        outputs_mean = torch.mean(outputs_mean, dim=0)
     
     else:
         outputs = net(inputs)
@@ -125,15 +123,17 @@ def get_args():
     
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
-    parser.add_argument('-b', '--batch', type=int, default=25, dest='batch')
+    parser.add_argument('-b', '--batch', type=int, default=1, dest='batch')
     
     parser.add_argument('-n', '--network', type=str, default='resnet34', dest='net')
     
-    parser.add_argument('-f', '--load', type=str, default='results/resnet18_tf_uq/', dest='load')  
+    parser.add_argument('-f', '--load', type=str, default='results/vgg16_tf_uq/', dest='load')  
     
-    parser.add_argument('-ad', '--adf', type=str, default=True, dest='adf')
+    parser.add_argument('-ad', '--adf', type=str, default=False, dest='adf')
     
     parser.add_argument('-m', '--mcdo', type=str, default=True, dest='mcdo')
+
+    parser.add_argument('-ns', '--num_samples', type=int, default=6, dest='num_samples')
         
     return parser.parse_args()
 
@@ -149,17 +149,17 @@ if __name__ == '__main__':
    
     if args.adf:    
         # Define mini variance and noise variance and other parameters 
-        min_variance,noise_variance= 1e-3,1e-4
+        min_variance,noise_variance= 1e-3,1e-3
         dropout_prob=0.2
         # net=vgg_adf(variant='vgg19',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
         net=model.resnet_adf(variant='resnet18',num_classes=2,dropout_prob=dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
 
     else:
-        net=model.vgg(variant='vgg16',num_classes=2)
+        net=model.resnet(variant='resnet18',num_classes=2)
    
     #laod weights
     if args.load != None:        
-        net.load_state_dict(torch.load(args.load+'resnet18.pth', map_location=device))
+        net.load_state_dict(torch.load(args.load+'vgg11.pth', map_location=device))
         logging.info(f'Model loaded from {args.load}')
     
     # create directory if not already exists
@@ -170,11 +170,11 @@ if __name__ == '__main__':
 
     net.to(device=device)
             
-    accuracy, brier_score, nll,total_prediction_variance=predict(net = net,device = device,batch_size = args.batch)
+    accuracy, brier_score, nll,total_prediction_variance=predict(net = net,device = device,batch_size = args.batch,use_adf=args.adf,use_mcdo=args.mcdo)
 
 
     logging.info(f'Test Accuracy: {accuracy}')
     logging.info(f'Test Brier Score: {brier_score}')
     logging.info(f'Negativge Log Loss: {nll}')    
-
+    logging.info(f'Total Prediction variance for the test set: {total_prediction_variance}')
   

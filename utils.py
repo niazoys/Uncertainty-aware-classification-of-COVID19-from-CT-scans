@@ -37,7 +37,12 @@ def eval_net(net,loader,criterion,device):
             preds = net(imgs) 
         loss = criterion(preds, label)
         loss_ += loss.item()  
-        _,preds = torch.max(preds[0], dim=1)
+      
+        if isinstance(preds,tuple):
+            _,preds = torch.max(preds[0], dim=1)
+        else:
+            _,preds = torch.max(preds, dim=1)
+
         total+=torch.sum(preds==label.squeeze()).item()
         n_sample+=len(label)
         for i in range(len(preds)):

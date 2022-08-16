@@ -1,16 +1,14 @@
-from cmath import nan
 import sys
 import torch
 import adf_blocks 
 import torch.nn as nn
-from torchvision import models
 from utils import keep_variance
 from typing import Union, List, Dict, Any, cast
 
 
 ########## VGG Architectures #########
 
-class VGG(nn.Module):
+class VGGADF(nn.Module):
 
     def __init__(
         self,
@@ -20,7 +18,7 @@ class VGG(nn.Module):
         min_variance: float =1e-3,
         noise_variance: float =1e-3
     ) -> None:
-        super(VGG, self).__init__()
+        super(VGGADF, self).__init__()
         self.var_fun = lambda x: keep_variance(x, min_variance=min_variance)
         self.features = features
         self._noise_variance = noise_variance
@@ -141,9 +139,9 @@ class Bottleneck(nn.Module):
         out = self.dropout(*self.ReLU(*out))
         return out
 
-class ResNet(nn.Module):
+class ResNetADF(nn.Module):
     def __init__(self, block, num_blocks,input_channel=3, num_classes=10, p=0.2, noise_variance=1e-3, min_variance=1e-3):
-        super(ResNet, self).__init__()
+        super(ResNetADF, self).__init__()
 
         self.keep_variance_fn = lambda x: keep_variance(x, min_variance=min_variance)
         self._noise_variance = noise_variance
@@ -198,43 +196,23 @@ cfgs_resnet: Dict[ str, List[Union[nn.Module,int]] ] = {
 
 ####### Model construction methods ##########
 
-def vgg_adf(variant: str='vgg16',input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any) -> VGG:
-    if variant == 'vgg19':
-        model = VGG(make_layers(cfgs['E'],input_channel=input_channel,min_variance=kwargs['min_variance'],dropout_prob=dropout_prob), **kwargs)
-    elif variant == 'vgg16':
-        model = VGG(make_layers(cfgs['D'],input_channel=input_channel,min_variance=kwargs['min_variance'],dropout_prob=dropout_prob), **kwargs)
-    elif variant == 'vgg13':
-        model = VGG(make_layers(cfgs['B'],input_channel=input_channel,min_variance=kwargs['min_variance'],dropout_prob=dropout_prob), **kwargs)
-    elif variant == 'vgg11':
-        model = VGG(make_layers(cfgs['A'],input_channel=input_channel,min_variance=kwargs['min_variance'],dropout_prob=dropout_prob), **kwargs)
-    else:
-        sys.exit("Unknown variant")
-    return model
+def vgg19(input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any) -> VGGADF:
+    return VGGADF(make_layers(cfgs['E'],input_channel=input_channel,dropout_prob=dropout_prob), dropout=dropout_prob,**kwargs)
+def vgg16(input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any) -> VGGADF: 
+    return VGGADF(make_layers(cfgs['D'],input_channel=input_channel,dropout_prob=dropout_prob),dropout=dropout_prob, **kwargs)
+def vgg13(input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any) -> VGGADF:
+    return VGGADF(make_layers(cfgs['B'],input_channel=input_channel,dropout_prob=dropout_prob),dropout=dropout_prob, **kwargs)
+def vgg11(input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any) -> VGGADF:
+    return VGGADF(make_layers(cfgs['A'],input_channel=input_channel,dropout_prob=dropout_prob),dropout=dropout_prob, **kwargs)
+    
+def resnet152(input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any)  -> ResNetADF :
+    return ResNetADF(cfgs_resnet['E'][0],cfgs_resnet['E'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
+def resnet101(input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any)  -> ResNetADF :
+    return ResNetADF(cfgs_resnet['D'][0],cfgs_resnet['D'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
+def resnet50(input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any)  -> ResNetADF :
+    return ResNetADF(cfgs_resnet['C'][0],cfgs_resnet['C'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
+def resnet34(input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any)  -> ResNetADF :
+    return ResNetADF(cfgs_resnet['B'][0],cfgs_resnet['B'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
+def resnet18(input_channel:int=3, dropout_prob:float=0.2 , **kwargs: Any)  -> ResNetADF :
+    return ResNetADF(cfgs_resnet['A'][0],cfgs_resnet['A'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
 
-def vgg(variant: str='vgg16',**kwargs: Any) -> VGG:
-    if variant == 'vgg19':
-        model = models.vgg19_bn(pretrained=False,num_classes=kwargs['num_classes'])
-    elif variant == 'vgg16':
-         model = models.vgg16_bn(pretrained=False,num_classes=kwargs['num_classes'])
-    elif variant == 'vgg13':
-         model = models.vgg13_bn(pretrained=False,num_classes=kwargs['num_classes'])
-    elif variant == 'vgg11':
-        model = models.vgg11_bn(pretrained=False,num_classes=kwargs['num_classes'])
-    else:
-        sys.exit("Unknown variant")
-    return model
-
-def resnet_adf(variant: str='resnet18',input_channel:int=3, dropout_prob:float=0.2 ,**kwargs: Any)  -> ResNet :
-    if variant == 'resnet152':
-        model = ResNet(cfgs_resnet['E'][0],cfgs_resnet['E'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
-    elif variant == 'resnet101':
-        model = ResNet(cfgs_resnet['D'][0],cfgs_resnet['D'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
-    elif variant == 'resnet50':
-        model = ResNet(cfgs_resnet['C'][0],cfgs_resnet['C'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
-    elif variant == 'resnet34':
-        model = ResNet(cfgs_resnet['B'][0],cfgs_resnet['B'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
-    elif variant == 'resnet18':
-        model = ResNet(cfgs_resnet['A'][0],cfgs_resnet['A'][1],input_channel=input_channel,num_classes=kwargs['num_classes'],p=dropout_prob,min_variance=kwargs['min_variance'],noise_variance=kwargs['noise_variance'])    
-    else:
-        sys.exit("Unknown variant")
-    return model
