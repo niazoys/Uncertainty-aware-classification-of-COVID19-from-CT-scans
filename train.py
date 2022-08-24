@@ -1,4 +1,3 @@
-from ast import arg
 import os
 import torch
 import utils,dataset
@@ -13,9 +12,9 @@ def train(net,device,criterion,train_dataset,val_dataset,args):
  
     n_train, n_val = len(train_dataset), len(val_dataset)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch, shuffle=True,num_workers=3)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch, shuffle=True,num_workers=4)
   
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch, shuffle=True,num_workers=3)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch, shuffle=True,num_workers=4)
    
     optimizer = torch.optim.Adam(net.parameters(), lr=1e-5*args.lr)
     
@@ -42,6 +41,12 @@ def train(net,device,criterion,train_dataset,val_dataset,args):
                 preds = net(imgs) 
                 loss = criterion(preds, label)
                 
+                optimizer.zero_grad()
+                
+                # with torch.autograd.detect_anomaly():                    
+                loss.backward()
+                optimizer.step()
+
                 if loss is not None:
                     epoch_loss += loss.item()
                 
@@ -53,10 +58,7 @@ def train(net,device,criterion,train_dataset,val_dataset,args):
                     _,preds = torch.max(preds, dim=1)
                 
                 correct_train+=torch.sum(preds==label.squeeze()).item()
-                
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+              
                 pbar.update(imgs.shape[0])
                 
                 
@@ -95,11 +97,11 @@ def get_args():
     
     parser.add_argument('-o', '--output', type=str, default='results/', dest='output')
     
-    parser.add_argument('-e', '--epochs', type=int, default=30, dest='epochs')
+    parser.add_argument('-e', '--epochs', type=int, default=40, dest='epochs')
     
-    parser.add_argument('-b', '--batch', type=int, default=10, dest='batch')
+    parser.add_argument('-b', '--batch', type=int, default=15, dest='batch')
     
-    parser.add_argument('-l', '--learning', type=int, default=100, dest='lr')
+    parser.add_argument('-l', '--learning', type=int, default=1, dest='lr')
     
     parser.add_argument('-is', '--in_shape', type=int, default=128, dest='in_shape')
     
@@ -109,9 +111,9 @@ def get_args():
 
     parser.add_argument('-ad', '--adf', type=str, default=True, dest='adf')
 
-    parser.add_argument('-m', '--mcdo', type=str, default=False, dest='mcdo')
+    parser.add_argument('-m', '--mcdo', type=str, default=True, dest='mcdo')
 
-    parser.add_argument('-dp', '--dropout', type=float, default=0.4, dest='dropout_prob')
+    parser.add_argument('-dp', '--dropout', type=float, default=0.1, dest='dropout_prob')
     
     parser.add_argument('-mn', '--model_name', type=str, default='resnet18', dest='model_name')
     
@@ -132,12 +134,12 @@ if __name__ == '__main__':
 
     if args.adf:    
         # Define mini variance and noise variance and other parameters 
-        min_variance,noise_variance= 1e-3,1e-3
+        min_variance,noise_variance= 1e-4,1e-4
         # Get the network and initialize the weights
         net_builder = getattr(model_adf, args.model_name)
         net = net_builder(num_classes=2,dropout_prob=args.dropout_prob,min_variance=min_variance,noise_variance=noise_variance)
         net=utils.init_params(net)
-        criterion = SoftmaxHeteroscedasticLoss(min_variance=min_variance)
+        criterion = SoftmaxHeteroscedasticLoss(min_variance=min_variance,num_class=2)
     elif args.mcdo:
         net_builder = getattr(model_dropout, args.model_name)
         net=net_builder(num_classes=2,dropout_prob=args.dropout_prob)
@@ -162,15 +164,15 @@ if __name__ == '__main__':
     net.to(device=device)
     
     #Get the dataset (Pulmonary Dataset for model pre training)
-    # train_dataset_pul=dataset.H5Dataset(path='pulmonary_data/train_data.h5',train=False,shape=args.in_shape)
-    # val_dataset_pul=dataset.H5Dataset(path='pulmonary_data/val_data.h5',train=False,shape=args.in_shape)
+    train_dataset_pul=dataset.H5Dataset(path='pulmonary_data/train_data.h5',train=False,shape=args.in_shape)
+    val_dataset_pul=dataset.H5Dataset(path='pulmonary_data/val_data.h5',train=False,shape=args.in_shape)
 
     #Get the COVID dataset
     train_dataset_covid=dataset.COVIDDataset(root='covid_data/train',shape=args.in_shape,train=True)
     val_dataset_covid=dataset.COVIDDataset(root='covid_data/val',shape=args.in_shape,train=False)
     
     # # pretrain on pulmonary dataset        
-    # net = train(net = net,device = device,criterion=criterion,train_dataset=train_dataset_pul,val_dataset=val_dataset_pul,args=args)
+    net = train(net = net,device = device,criterion=criterion,train_dataset=train_dataset_pul,val_dataset=val_dataset_pul,args=args)
     
     # train on covid dataset
     _   = train(net = net,device = device,criterion=criterion,train_dataset=train_dataset_covid,val_dataset=val_dataset_covid,args=args)

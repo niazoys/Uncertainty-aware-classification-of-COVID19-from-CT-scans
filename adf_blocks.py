@@ -382,18 +382,22 @@ class Sequential(nn.Module):
         return input_mean, inputs_variance
 
 class SoftmaxHeteroscedasticLoss(torch.nn.Module):    
-    def __init__(self,min_variance):
+    def __init__(self,min_variance,num_class):
         super(SoftmaxHeteroscedasticLoss, self).__init__()
         keep_variance_fn = lambda x: utils.keep_variance(x, min_variance=min_variance)
-        self.adf_softmax = Softmax(dim=1, keep_variance_fn=keep_variance_fn)
-        
+        self.adf_softmax = Softmax(dim=1, keep_variance_fn=None)
+        self.num_class=num_class
     def forward(self, outputs, targets, eps=1e-5):
         mean, var = self.adf_softmax(*outputs)
-        targets = F.one_hot(targets)
+        
+        #Handle Nan cases
+        var=torch.nan_to_num(var)
+
+        targets = F.one_hot(targets,num_classes=self.num_class)
         precision = 1/(var + eps)
 
-        loss=torch.mean(0.5*precision * (targets-mean)**2 + 0.5*torch.log(var+eps))
-
+        loss=torch.mean(precision * (targets-mean)**2 + torch.log(var+eps))
+  
         return loss
 
 
